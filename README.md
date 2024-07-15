@@ -13,3 +13,6 @@ The request post body:
 ```json
 { "query": "jq-query"}
 ```
+
+## Prerequisits
+- Install `jq` from [here](https://jqlang.github.io/jq/)
