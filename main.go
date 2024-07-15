@@ -39,7 +39,7 @@ func getFile(ctx *gin.Context) (int, interface{}) {
 
 	data, err := readJsonFile(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while reading file: %s - %s", filename, err.Error())
+		fmt.Fprintf(os.Stderr, "error while reading file: %s - %s\n", filename, err.Error())
 		return http.StatusBadRequest, nil
 	}
 
@@ -52,28 +52,26 @@ type Instruction struct {
 }
 
 func queryFile(ctx *gin.Context) (int, interface{}) {
-	filename := ctx.Param("filename")
-
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while reading request body: %s", err.Error())
+		fmt.Fprintf(os.Stderr, "error while reading request body: %s\n", err.Error())
 		return http.StatusBadRequest, nil
 	}
 
 	var instruction Instruction
 	err = json.Unmarshal(body, &instruction)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while umarshalling request body: %s", err.Error())
+		fmt.Fprintf(os.Stderr, "error while umarshalling request body: %s\nGot: %s\n", err.Error(), string(body))
 		return http.StatusBadRequest, nil
 	}
 
-	var filePaths []string
+	args := []string{fmt.Sprintf("%s", instruction.Query)}
 	for _, file := range instruction.Files {
-		filePaths = append(filePaths, fmt.Sprintf("./data/%s.json", file))
+		args = append(args, fmt.Sprintf("./data/%s.json", file))
 	}
 
 	var out bytes.Buffer
-	cmd := exec.Command("jq", instruction.Query, strings.Join(filePaths, " "))
+	cmd := exec.Command("jq", args...)
 
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -82,18 +80,18 @@ func queryFile(ctx *gin.Context) (int, interface{}) {
 		fmt.Fprintf(
 			os.Stderr,
 			"error while executing query for file: %s - %s\ncmd: %s\nerr: %s\n",
-			filename, err.Error(), cmd.String(), out.String(),
+			strings.Join(instruction.Files, " "), err.Error(), cmd.String(), out.String(),
 		)
 		return http.StatusInternalServerError, nil
 	}
 
-	return bytesToJSON(filename, out.Bytes())
+	return bytesToJSON(strings.Join(instruction.Files, " "), out.Bytes())
 }
 
 func readJsonFile(filename string) ([]byte, error) {
 	file, err := os.Open("./data/" + filename + ".json")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while opening file: %s - %s", filename, err.Error())
+		fmt.Fprintf(os.Stderr, "error while opening file: %s - %s\n", filename, err.Error())
 		return nil, err
 	}
 	defer file.Close()
@@ -107,7 +105,7 @@ func bytesToJSON(filename string, data []byte) (int, interface{}) {
 		var jsonData []gin.H
 		err := json.Unmarshal(data, &jsonData)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error while unmarshalling file: %s - %s", filename, err.Error())
+			fmt.Fprintf(os.Stderr, "error while unmarshalling file: %s - %s\n", filename, err.Error())
 			return http.StatusInternalServerError, nil
 		}
 
@@ -118,7 +116,7 @@ func bytesToJSON(filename string, data []byte) (int, interface{}) {
 	var jsonData gin.H
 	err := json.Unmarshal(data, &jsonData)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while unmarshalling file: %s - %s", filename, err.Error())
+		fmt.Fprintf(os.Stderr, "error while unmarshalling file: %s - %s\n", filename, err.Error())
 		return http.StatusInternalServerError, nil
 	}
 
