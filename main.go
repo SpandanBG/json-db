@@ -28,6 +28,7 @@ func registerRoutes(r *gin.Engine) {
 func jsonHandler(handler jsonHandlerFn) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		status, data := handler(ctx)
+		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		ctx.JSON(int(status), data)
 	}
 }
