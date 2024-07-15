@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
@@ -22,7 +23,7 @@ func main() {
 
 func registerRoutes(r *gin.Engine) {
 	r.GET("/:filename/get", jsonHandler(getFile))
-	r.POST("/:filename/query", jsonHandler(queryFile))
+	r.POST("/query", jsonHandler(queryFile))
 }
 
 func jsonHandler(handler jsonHandlerFn) gin.HandlerFunc {
@@ -46,7 +47,8 @@ func getFile(ctx *gin.Context) (int, interface{}) {
 }
 
 type Instruction struct {
-	Query string `json:"query"`
+	Query string   `json:"query"`
+	Files []string `json:"files"`
 }
 
 func queryFile(ctx *gin.Context) (int, interface{}) {
@@ -65,8 +67,13 @@ func queryFile(ctx *gin.Context) (int, interface{}) {
 		return http.StatusBadRequest, nil
 	}
 
+	var filePaths []string
+	for _, file := range instruction.Files {
+		filePaths = append(filePaths, fmt.Sprintf("./data/%s.json", file))
+	}
+
 	var out bytes.Buffer
-	cmd := exec.Command("jq", instruction.Query, fmt.Sprintf("./data/%s.json", filename))
+	cmd := exec.Command("jq", instruction.Query, strings.Join(filePaths, " "))
 
 	cmd.Stdout = &out
 	cmd.Stderr = &out

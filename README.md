@@ -5,13 +5,13 @@ This will work as a pseudo database with any json file as long as the query pass
 
 ## Routes:
 1. GET - `/:filename/get` :: Returns the entire JSON data in the file `filename`.
-2. POST - `/:filename/query` :: Performs the `jq` query in the following cmd
+2. POST - `/query` :: Performs the `jq` query in the following cmd
 ```shell
 jq $query ./data/$filename.json
 ```
 The request post body:
 ```json
-{ "query": "jq-query"}
+{ "query": "jq-query", "files": ["filename", ...] }
 ```
 
 ## Prerequisits
