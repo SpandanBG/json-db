@@ -35,19 +35,18 @@ func jsonHandler(handler jsonHandlerFn) gin.HandlerFunc {
 }
 
 func getFile(ctx *gin.Context) (int, interface{}) {
-	filename := ctx.Param("filename")
-
-	data, err := readJsonFile(filename)
+	data, err := readJsonFile(ctx.Param("filename"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while reading file: %s - %s\n", filename, err.Error())
+		fmt.Fprintf(os.Stderr, "error while reading file: %s - %s\n", ctx.Param("filename"), err.Error())
 		return http.StatusBadRequest, nil
 	}
 
-	return bytesToJSON(filename, data)
+	return bytesToJSON(data)
 }
 
 type Instruction struct {
 	Query string   `json:"query"`
+	Flags string   `json:"flags"`
 	Files []string `json:"files"`
 }
 
@@ -58,34 +57,50 @@ func queryFile(ctx *gin.Context) (int, interface{}) {
 		return http.StatusBadRequest, nil
 	}
 
-	var instruction Instruction
-	err = json.Unmarshal(body, &instruction)
+	var instructions []Instruction
+	err = json.Unmarshal(body, &instructions)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error while umarshalling request body: %s\nGot: %s\n", err.Error(), string(body))
 		return http.StatusBadRequest, nil
 	}
 
-	args := []string{fmt.Sprintf("%s", instruction.Query)}
-	for _, file := range instruction.Files {
-		args = append(args, fmt.Sprintf("./data/%s.json", file))
+	var inBuff bytes.Buffer
+	var outBuff bytes.Buffer
+	for _, instruction := range instructions {
+		inBuff.Reset()
+		_, err := inBuff.Write(outBuff.Bytes())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error while prepping std in for cmd: %s\n", err.Error())
+			return http.StatusInternalServerError, nil
+		}
+		outBuff.Reset()
+
+		args := []string{fmt.Sprintf("%s", instruction.Query)}
+		if len(instruction.Flags) > 0 {
+			args = append(args, instruction.Flags)
+		}
+
+		for _, file := range instruction.Files {
+			args = append(args, fmt.Sprintf("./data/%s.json", file))
+		}
+
+		cmd := exec.Command("jq", args...)
+
+		cmd.Stdin = &inBuff
+		cmd.Stdout = &outBuff
+		cmd.Stderr = &outBuff
+		err = cmd.Run()
+		if err != nil {
+			fmt.Fprintf(
+				os.Stderr,
+				"error while executing query for file: %s - %s\ncmd: %s\nerr: %s\n",
+				strings.Join(instruction.Files, " "), err.Error(), cmd.String(), outBuff.String(),
+			)
+			return http.StatusInternalServerError, nil
+		}
 	}
 
-	var out bytes.Buffer
-	cmd := exec.Command("jq", args...)
-
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err = cmd.Run()
-	if err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"error while executing query for file: %s - %s\ncmd: %s\nerr: %s\n",
-			strings.Join(instruction.Files, " "), err.Error(), cmd.String(), out.String(),
-		)
-		return http.StatusInternalServerError, nil
-	}
-
-	return bytesToJSON(strings.Join(instruction.Files, " "), out.Bytes())
+	return bytesToJSON(outBuff.Bytes())
 }
 
 func readJsonFile(filename string) ([]byte, error) {
@@ -99,26 +114,30 @@ func readJsonFile(filename string) ([]byte, error) {
 	return io.ReadAll(file)
 }
 
-func bytesToJSON(filename string, data []byte) (int, interface{}) {
+func bytesToJSON(data []byte) (int, interface{}) {
 	// Handle if file is array of jsons
 	if data[0] == '[' {
 		var jsonData []gin.H
 		err := json.Unmarshal(data, &jsonData)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error while unmarshalling file: %s - %s\n", filename, err.Error())
+			fmt.Fprintf(os.Stderr, "error while unmarshalling: %s\nData: %s\n", err.Error(), string(data))
 			return http.StatusInternalServerError, nil
 		}
 
 		return http.StatusOK, jsonData
 	}
 
-	// Default case when file is a single json object
-	var jsonData gin.H
-	err := json.Unmarshal(data, &jsonData)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error while unmarshalling file: %s - %s\n", filename, err.Error())
-		return http.StatusInternalServerError, nil
+	if data[0] == '{' {
+		// Default case when file is a single json object
+		var jsonData gin.H
+		err := json.Unmarshal(data, &jsonData)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error while unmarshalling: %s\nData: %s\n", err.Error(), string(data))
+			return http.StatusInternalServerError, nil
+		}
+
+		return http.StatusOK, jsonData
 	}
 
-	return http.StatusOK, jsonData
+	return http.StatusOK, string(data)
 }
